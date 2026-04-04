@@ -1,7 +1,7 @@
 # Histopathologic Cancer Detection — Group 5
 
 ## Group Members
-| Eric Emiowei | Data Engineer (Data Preparation Lead) |
+Eric Emiowei: Data Engineer (Data Preparation Lead) 
 
 ---
 
