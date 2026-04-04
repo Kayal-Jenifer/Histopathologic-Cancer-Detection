@@ -1,9 +1,6 @@
 # Histopathologic Cancer Detection — Group 5
 
 ## Group Members
-
-| Name | Role |
-|------|------|
 | Eric Emiowei | Data Engineer (Data Preparation Lead) |
 
 ---
@@ -52,7 +49,7 @@ unzip histopathologic-cancer-detection.zip -d data/
 ```
 project/
 ├── src/
-│   └── data_loader.py          ← Eric's data pipeline script
+│   └── data_loader.py          ← Data pipeline script
 ├── data/
 │   ├── train/                  ← 220,025 .tif images go here
 │   └── train_labels.csv        ← label file (id | label)
@@ -139,3 +136,4 @@ train_loader = DataLoader(
     batch_size=32, shuffle=True, num_workers=4
 )
 ```
+clear
