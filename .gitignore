@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# ML model artifacts
+*.h5
+*.pt
+*.pth
+*.pkl
+*.pickle
+*.ckpt
+
+# Data
+data/
+datasets/
+*.csv
+*.zip
+*.tar.gz
+*.tar.bz2
+
+# Training outputs
+runs/
+outputs/
+lightning_logs/
+.wandb/
+checkpoint*/
+logs/
+
+# Build
+*.egg-info/
+dist/
+build/
+*.egg
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
