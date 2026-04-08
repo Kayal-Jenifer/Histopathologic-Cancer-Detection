@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from ..unsupervised.utils import append_metrics_row, compute_metrics
+from supervised.utils import append_metrics_row, compute_metrics
 
 
 @torch.inference_mode()

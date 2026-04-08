@@ -8,11 +8,10 @@ import pandas as pd
 import torch
 import torchvision.transforms as T
 
-from ..unsupervised.datasets import LabeledImageDataset
-from ..unsupervised.train import eval_baseline_cnn
-from ..unsupervised.utils import append_metrics_row, compute_metrics, get_or_create_splits, make_loader, seed_everything
-from .models import CustomCNN
-from .train import train_custom_cnn
+from supervised.datasets import LabeledImageDataset
+from supervised.models import CustomCNN
+from supervised.train import train_custom_cnn
+from supervised.utils import append_metrics_row, compute_metrics, get_or_create_splits, make_loader, seed_everything
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -117,7 +116,7 @@ def run_supervised_pipeline(cfg: SupervisedConfig, run_name: str) -> dict:
     )
 
     model.load_state_dict(torch.load(best_path, map_location=device))
-    y_true, y_prob = eval_baseline_cnn(model, test_loader, device)
+    y_true, y_prob = _evaluate_classifier(model, test_loader, device)
     test_metrics = compute_metrics(y_true, y_prob)
     result = {
         "run_name": run_name,
@@ -134,6 +133,20 @@ def run_supervised_pipeline(cfg: SupervisedConfig, run_name: str) -> dict:
     _save_probability_plot(y_true, y_prob, PLOTS_DIR / f"{run_name}_probabilities.png")
     print("Test metrics:", test_metrics)
     return result
+
+
+@torch.inference_mode()
+def _evaluate_classifier(model, loader, device):
+    model.eval()
+    labels = []
+    probs = []
+    for images, targets in loader:
+        images = images.to(device, non_blocking=True)
+        logits = model(images)
+        batch_probs = torch.sigmoid(logits).detach().cpu().numpy().astype("float32")
+        probs.extend(batch_probs.tolist())
+        labels.extend(int(target) for target in targets)
+    return pd.Series(labels, dtype="int64").to_numpy(), pd.Series(probs, dtype="float32").to_numpy()
 
 
 def _save_probability_plot(y_true, y_prob, output_path: Path) -> None:
