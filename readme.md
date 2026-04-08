@@ -48,6 +48,7 @@ I implemented and compared:
 Unsupervised feature extraction with a CNN Autoencoder (latent vectors)
 Transfer learning using ResNet50 as a frozen feature extractor (deep features) + optional PCA compression
 Baseline CNN trained from scratch end-to-end on images + labels
+Supervised custom CNN using the same PyTorch project structure as the unsupervised pipeline
 
 ## Metrics reported:
 
@@ -105,6 +106,20 @@ Run as a module from inside src/:
 
 cd Histopathologic-Cancer-Detection/src
 python -m unsupervised
+
+3) Supervised custom CNN
+Run as a module from inside `src/`:
+
+```bash
+cd Histopathologic-Cancer-Detection/src
+python3 -m supervised
+```
+
+Run the prepared supervised experiment set:
+
+```bash
+python3 src/supervised_experiments.py
+```
 ---
 
 ## What the Script Does
@@ -148,7 +163,17 @@ python -m unsupervised
 - Training history:
   - `results/pipeline/logs/cnn_history.csv`
 
-5) **Metrics + plots**  
+5) **Supervised custom CNN**  
+- Best checkpoint:
+  - `results/supervised_cnn/checkpoints/<run_name>/custom_cnn_best.pt`
+- Training history:
+  - `results/supervised_cnn/logs/<run_name>_history.csv`
+- Metrics:
+  - `results/supervised_cnn/tables/metrics.csv`
+- Experiment summary:
+  - `report/supervised_experiments.csv`
+
+6) **Metrics + plots**  
 - Metrics table:
   - `results/pipeline/metrics.csv`
 - Plots:
@@ -176,12 +201,24 @@ After running the pipeline, the terminal prints metrics for each method and save
 
 The project compares:
 - **Baseline CNN** — final test metrics printed in terminal
+- **Supervised custom CNN** — configurable custom architecture trained from scratch
 - **Autoencoder latent features + classifier** — val/test metrics printed in terminal
 - **ResNet50 (frozen) PCA features + classifier** — val/test metrics printed in terminal
 
 The pipeline also saves comparison visuals to:
 - `results/pipeline/plots/comparison_test.png` (bar chart comparison)
 - `results/pipeline/plots/roc_curves_test.png` (ROC curves)
+
+### Supervised CNN Experiment Controls
+
+The custom CNN explicitly supports the required supervised-learning experiments:
+
+- **Layers and filters:** change the `filters` tuple in `SupervisedConfig`
+- **Dropout:** change `dropout` in `SupervisedConfig`
+- **BatchNorm:** change `use_batchnorm` in `SupervisedConfig`
+- **Learning rate:** change `learning_rate` in `SupervisedConfig`
+
+Prepared experiment settings are included in `src/supervised_experiments.py`.
 
 
 ## How Other Members Use the Pipeline
