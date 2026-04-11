@@ -1,0 +1,4 @@
+run_name,filters,dense_units,dropout,learning_rate,batch_size,epochs,val_accuracy,val_auc,notes
+baseline,"32,64,128,256",256,0.40,0.001,64,15,,,Baseline custom CNN
+exp_2,"32,64,128",256,0.30,0.001,64,15,,,Fewer conv blocks
+exp_3,"32,64,128,256,512",256,0.50,0.0005,32,20,,,Deeper CNN with stronger regularization
