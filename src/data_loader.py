@@ -53,22 +53,75 @@ val_transforms = T.Compose([
 
 
 # Custom Dataset class
-# Images are loaded one at a time (not all at once) because 220k images won't fit in memory
+# cache=True loads all images into RAM once at init — eliminates per-epoch disk I/O.
+# 15k × 96×96 RGB images ≈ 400 MB, which fits comfortably in memory.
 class CancerDataset(Dataset):
-    def __init__(self, ids, labels, transform):
-        self.ids       = ids
+    def __init__(self, ids, labels, transform, cache: bool = True):
         self.labels    = labels
         self.transform = transform
+        if cache:
+            print(f"    Caching {len(ids)} images into RAM...", end=" ", flush=True)
+            self.images = [Image.open(TRAIN_DIR / f"{i}.tif").convert("RGB") for i in ids]
+            self.ids    = None
+            print("done")
+        else:
+            self.images = None
+            self.ids    = ids
 
     def __len__(self):
-        return len(self.ids)
+        return len(self.labels)
 
     def __getitem__(self, idx):
-        # Load image from disk, convert to RGB, apply transforms
-        image = Image.open(TRAIN_DIR / f"{self.ids[idx]}.tif").convert("RGB")
-        image = self.transform(image)
-        label = torch.tensor(self.labels[idx], dtype=torch.long)
-        return image, label
+        img = (
+            self.images[idx]
+            if self.images is not None
+            else Image.open(TRAIN_DIR / f"{self.ids[idx]}.tif").convert("RGB")
+        )
+        return self.transform(img), torch.tensor(self.labels[idx], dtype=torch.long)
+
+
+def get_loaders(seed: int = 42, samples_per_class: int = 10_000, batch_size: int = 32):
+    """
+    Return (train_loader, val_loader, test_loader) with a balanced subsample.
+
+    Samples `samples_per_class` images from each class, then applies a
+    75% / 15% / 10% stratified train/val/test split.
+    """
+    import random as _random
+    _random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    df = pd.read_csv(LABELS_CSV)
+    neg = df[df["label"] == 0].sample(samples_per_class, random_state=seed)
+    pos = df[df["label"] == 1].sample(samples_per_class, random_state=seed)
+    df  = pd.concat([neg, pos]).sample(frac=1, random_state=seed).reset_index(drop=True)
+
+    train_val, test = train_test_split(df, test_size=0.10,   stratify=df["label"],       random_state=seed)
+    train, val      = train_test_split(train_val, test_size=0.1667, stratify=train_val["label"], random_state=seed)
+
+    num_workers = min(multiprocessing.cpu_count(), 8)
+    pin_memory  = torch.cuda.is_available()
+    kwargs = dict(
+        batch_size=batch_size,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        persistent_workers=num_workers > 0,
+    )
+
+    train_loader = DataLoader(
+        CancerDataset(train["id"].tolist(), train["label"].tolist(), train_transforms),
+        shuffle=True, **kwargs,
+    )
+    val_loader = DataLoader(
+        CancerDataset(val["id"].tolist(), val["label"].tolist(), val_transforms),
+        shuffle=False, **kwargs,
+    )
+    test_loader = DataLoader(
+        CancerDataset(test["id"].tolist(), test["label"].tolist(), val_transforms),
+        shuffle=False, **kwargs,
+    )
+    return train_loader, val_loader, test_loader
 
 
 if __name__ == "__main__":
@@ -92,8 +145,15 @@ if __name__ == "__main__":
     print("  1. DATASET OVERVIEW")
     print("=" * 50)
     df = pd.read_csv(LABELS_CSV)
-    print(f"  Total images : {len(df):,}")
+    print(f"  Total images (full dataset) : {len(df):,}")
     print(df["label"].value_counts().to_string())
+
+    # ── 1b. Balanced Subsample: 10k cancer + 10k no-cancer ───────────────────
+    SAMPLES_PER_CLASS = 10_000
+    neg_sample = df[df["label"] == 0].sample(SAMPLES_PER_CLASS, random_state=SEED)
+    pos_sample = df[df["label"] == 1].sample(SAMPLES_PER_CLASS, random_state=SEED)
+    df = pd.concat([neg_sample, pos_sample]).sample(frac=1, random_state=SEED).reset_index(drop=True)
+    print(f"\n  Subsampled to {len(df):,} images ({SAMPLES_PER_CLASS:,} per class)")
 
     # ── 2. Train (75%) / Val (15%) / Test Split (10%) ──────────────────────────────────────────
     print("\n" + "=" * 50)
@@ -147,7 +207,7 @@ if __name__ == "__main__":
     total  = len(df)
     print(f"  {LABEL_NEG} : {counts[0]:,}  ({counts[0]/total*100:.1f}%)")
     print(f"  {LABEL_POS}    : {counts[1]:,}  ({counts[1]/total*100:.1f}%)")
-    print(f"  Imbalance ratio : {counts[0]/counts[1]:.2f}:1")
+    print(f"  Balance ratio   : {counts[0]/counts[1]:.2f}:1  (balanced by design)")
 
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     axes[0].bar([LABEL_NEG, LABEL_POS], counts.values, color=["#4C9BE8", "#E8714C"])
