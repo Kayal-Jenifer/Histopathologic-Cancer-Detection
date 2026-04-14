@@ -19,31 +19,43 @@ from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as T
 
 
-# Paths
+# ─────────────────────────────────────────────────────────────────────────────
+#  Paths
+# ─────────────────────────────────────────────────────────────────────────────
 ROOT_DIR = Path(__file__).resolve().parent.parent
 TRAIN_DIR = ROOT_DIR / "data" / "train"
 LABELS_CSV = ROOT_DIR / "data" / "train_labels.csv"
 RESULTS_DIR = ROOT_DIR / "results" / "supervised_learning"
-TABLES_DIR = RESULTS_DIR / "tables"
 SCREENSHOTS_DIR = ROOT_DIR / "results" / "screenshots"
 
 
-# Labels and normalization
+# ─────────────────────────────────────────────────────────────────────────────
+#  Labels and normalization
+# ─────────────────────────────────────────────────────────────────────────────
+# These normalization values are reused from the project data-preparation work.
 LABEL_NEG = "No Cancer"
 LABEL_POS = "Cancer"
 MEAN = (0.7008, 0.5384, 0.6916)
 STD = (0.2350, 0.2774, 0.2128)
 
 
-# Base settings
+# ─────────────────────────────────────────────────────────────────────────────
+#  Base settings
+# ─────────────────────────────────────────────────────────────────────────────
+# We keep the supervised task aligned with data exploration by using
+# a balanced subset of 1,000 images per class = 2,000 total images.
 SEED = 42
 SAMPLES_PER_CLASS = 1_000
 BATCH_SIZE = 32
 EPOCHS = 8
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 0.001
 NUM_WORKERS = 0
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Reproducibility helper
+# ─────────────────────────────────────────────────────────────────────────────
+# Fix random seeds so the same subset and splits are produced every run.
 def seed_everything(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -51,6 +63,10 @@ def seed_everything(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Custom Dataset
+# ─────────────────────────────────────────────────────────────────────────────
+# PyTorch loads images one at a time instead of keeping everything in memory.
 class CancerDataset(Dataset):
     def __init__(self, ids, labels, transform):
         self.ids = list(ids)
@@ -67,6 +83,10 @@ class CancerDataset(Dataset):
         return image, label
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  CNN Building Blocks
+# ─────────────────────────────────────────────────────────────────────────────
+# Each convolution block learns local tissue patterns and then reduces spatial size with max pooling.
 class ConvBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, dropout: float, use_batchnorm: bool):
         super().__init__()
@@ -83,6 +103,8 @@ class ConvBlock(nn.Module):
         return self.block(x)
 
 
+# The full custom CNN stacks several ConvBlocks, then uses a dense layer
+# to convert learned image features into one cancer / no-cancer prediction.
 class CustomCNN(nn.Module):
     def __init__(self, filters=(32, 64, 128, 256), dense_units=256, dropout=0.4, use_batchnorm=True):
         super().__init__()
@@ -108,6 +130,10 @@ class CustomCNN(nn.Module):
         return self.classifier(x).squeeze(1)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Image transforms
+# ─────────────────────────────────────────────────────────────────────────────
+# Training uses augmentation; validation/test use only resize + normalization.
 def make_transforms():
     train_transforms = T.Compose(
         [
@@ -124,6 +150,10 @@ def make_transforms():
     return train_transforms, eval_transforms
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Balanced 2,000-image subset + train/val/test split
+# ─────────────────────────────────────────────────────────────────────────────
+# Similar idea used in data_exploration 1,000 no-cancer + 1,000 cancer images, then a stratified split.
 def make_splits():
     df_full = pd.read_csv(LABELS_CSV)
     neg_sample = df_full[df_full["label"] == 0].sample(SAMPLES_PER_CLASS, random_state=SEED)
@@ -134,7 +164,10 @@ def make_splits():
     train, val = train_test_split(train_val, test_size=0.1667, stratify=train_val["label"], random_state=SEED)
     return train.reset_index(drop=True), val.reset_index(drop=True), test.reset_index(drop=True)
 
-
+# ─────────────────────────────────────────────────────────────────────────────
+#  DataLoaders
+# ─────────────────────────────────────────────────────────────────────────────
+# Wrap the datasets into batched PyTorch loaders for training/evaluation.
 def make_loaders(batch_size: int):
     train_df, val_df, test_df = make_splits()
     train_tfms, eval_tfms = make_transforms()
@@ -155,6 +188,10 @@ def make_loaders(batch_size: int):
     return train_df, val_df, test_df, train_loader, val_loader, test_loader
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Evaluation
+# ─────────────────────────────────────────────────────────────────────────────
+# Run the model on validation or test data and compute classification metrics.
 @torch.inference_mode()
 def evaluate_model(model, loader, device):
     model.eval()
@@ -183,7 +220,11 @@ def evaluate_model(model, loader, device):
         "roc_auc": float(roc_auc),
     }
 
-
+# ─────────────────────────────────────────────────────────────────────────────
+#  One experiment = train one CNN configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# This function trains one model setting (for example baseline, fewer layers,
+# or no batch normalization), keeps the best epoch, and returns its history.
 def train_one_experiment(config, train_loader, val_loader, device):
     model = CustomCNN(
         filters=config["filters"],
@@ -206,12 +247,14 @@ def train_one_experiment(config, train_loader, val_loader, device):
     print(f"  BatchNorm     : {config['use_batchnorm']}")
     print(f"  Learning rate : {config['learning_rate']}")
 
+    # Standard training loop: train on all batches, then validate once per epoch.
     for epoch in range(1, config["epochs"] + 1):
         start_time = time.time()
         model.train()
         running_loss = 0.0
         seen = 0
 
+        # Forward pass -> loss -> backpropagation -> optimizer step.
         for images, labels in train_loader:
             images = images.to(device, non_blocking=True)
             labels = labels.to(device, non_blocking=True)
@@ -226,6 +269,7 @@ def train_one_experiment(config, train_loader, val_loader, device):
             running_loss += loss.item() * batch_size
             seen += batch_size
 
+        # After each epoch, measure how well the current model generalizes.
         train_loss = running_loss / max(seen, 1)
         val_metrics = evaluate_model(model, val_loader, device)
         elapsed = time.time() - start_time
@@ -252,6 +296,7 @@ def train_one_experiment(config, train_loader, val_loader, device):
             }
         )
 
+        # Keep the best model weights based on validation ROC-AUC.
         if val_metrics["roc_auc"] > best_val_auc:
             best_val_auc = val_metrics["roc_auc"]
             best_state = copy.deepcopy(model.state_dict())
@@ -260,6 +305,10 @@ def train_one_experiment(config, train_loader, val_loader, device):
     return model, history_rows
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Save training curves
+# ─────────────────────────────────────────────────────────────────────────────
+# Each experiment gets a loss plot and a validation-metrics plot.
 def save_training_plots(history_rows):
     history_df = pd.DataFrame(history_rows)
 
@@ -289,12 +338,19 @@ def save_training_plots(history_rows):
         plt.close()
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+#  Supervised-learning pipeline
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. Check dataset paths
+# 2. Build the balanced 2K subset and split it
+# 3. Train several CNN variants
+# 4. Compare their results and save plots
 def main():
     seed_everything(SEED)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    TABLES_DIR.mkdir(parents=True, exist_ok=True)
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Fail early if the expected dataset files are missing.
     if not TRAIN_DIR.exists():
         raise FileNotFoundError(
             f"Image directory not found: {TRAIN_DIR.resolve()}\n"
@@ -315,8 +371,9 @@ def main():
     print(f"  Val samples   : {len(val_df):,}")
     print(f"  Test samples  : {len(test_df):,}")
     print(f"  Batch size    : {BATCH_SIZE}")
-    print(f"  Workers       : {NUM_WORKERS}")
 
+    # These experiment settings are here because the task explicitly asks us
+    # to compare different architecture and training choices.
     experiments = [
         {
             "name": "baseline",
@@ -357,36 +414,20 @@ def main():
     ]
 
     history_rows = []
-    summary_rows = []
-
+    # Train and evaluate each experiment one after another.
     for config in experiments:
         best_model, experiment_history = train_one_experiment(config, train_loader, val_loader, device)
         history_rows.extend(experiment_history)
 
         test_metrics = evaluate_model(best_model, test_loader, device)
-        summary_rows.append(
-            {
-                "experiment": config["name"],
-                "filters": str(config["filters"]),
-                "dense_units": config["dense_units"],
-                "dropout": config["dropout"],
-                "use_batchnorm": config["use_batchnorm"],
-                "learning_rate": config["learning_rate"],
-                "epochs": config["epochs"],
-                **test_metrics,
-            }
-        )
         print(f"  Test metrics    : {test_metrics}")
 
-    pd.DataFrame(history_rows).to_csv(TABLES_DIR / "supervised_history.csv", index=False)
-    pd.DataFrame(summary_rows).to_csv(TABLES_DIR / "supervised_results.csv", index=False)
+    # Save screenshots for the training curves.
     save_training_plots(history_rows)
 
     print("\n" + "=" * 55)
     print("  SUPERVISED LEARNING COMPLETE")
     print("=" * 55)
-    print(f"  History saved : {TABLES_DIR / 'supervised_history.csv'}")
-    print(f"  Results saved : {TABLES_DIR / 'supervised_results.csv'}")
     print(f"  Plots saved   : {SCREENSHOTS_DIR}")
 
 
