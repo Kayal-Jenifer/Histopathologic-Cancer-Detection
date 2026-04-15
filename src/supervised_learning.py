@@ -385,48 +385,10 @@ def main():
     print(f"  Val samples   : {len(val_df):,}")
     print(f"  Test samples  : {len(test_df):,}")
     print(f"  Batch size    : {BATCH_SIZE}")
+    print(f"  Workers       : {NUM_WORKERS}")
 
     # These experiment settings are here because the task explicitly asks us
     # to compare different architecture and training choices.
-    # experiments = [
-    #     {
-    #         "name": "baseline",
-    #         "filters": (32, 64, 128, 256),
-    #         "dense_units": 256,
-    #         "dropout": 0.40,
-    #         "use_batchnorm": True,
-    #         "learning_rate": 1e-3,
-    #         "epochs": EPOCHS,
-    #     },
-    #     {
-    #         "name": "fewer_layers",
-    #         "filters": (32, 64, 128),
-    #         "dense_units": 256,
-    #         "dropout": 0.30,
-    #         "use_batchnorm": True,
-    #         "learning_rate": 1e-3,
-    #         "epochs": EPOCHS,
-    #     },
-    #     {
-    #         "name": "no_batchnorm",
-    #         "filters": (32, 64, 128, 256),
-    #         "dense_units": 256,
-    #         "dropout": 0.40,
-    #         "use_batchnorm": False,
-    #         "learning_rate": 1e-3,
-    #         "epochs": EPOCHS,
-    #     },
-    #     {
-    #         "name": "lower_lr_deeper",
-    #         "filters": (32, 64, 128, 256, 512),
-    #         "dense_units": 256,
-    #         "dropout": 0.50,
-    #         "use_batchnorm": True,
-    #         "learning_rate": 5e-4,
-    #         "epochs": EPOCHS,
-    #     },
-    # ]
-
     experiments = [
 
         {
