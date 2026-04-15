@@ -46,7 +46,7 @@ STD = (0.2350, 0.2774, 0.2128)
 # a balanced subset of 1,000 images per class = 2,000 total images.
 SEED = 42
 SAMPLES_PER_CLASS = 1_000
-BATCH_SIZE = 32
+BATCH_SIZE = 32 #64
 EPOCHS = 8
 LEARNING_RATE = 0.001
 NUM_WORKERS = 0
@@ -232,8 +232,22 @@ def train_one_experiment(config, train_loader, val_loader, device):
         dropout=config["dropout"],
         use_batchnorm=config["use_batchnorm"],
     ).to(device)
+    
+    #removed previous code: optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
+    # to expand with the folllowng optimizations comparing Adam with SGD 
+    if config["optimizer"] == "Adam":
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=config["learning_rate"]
+        )
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["learning_rate"])
+    elif config["optimizer"] == "SGD":
+        optimizer = torch.optim.SGD(
+            model.parameters(),
+            lr=config["learning_rate"],
+            momentum=0.9
+        )
+
     best_state = None
     best_val_auc = -float("inf")
     history_rows = []
@@ -374,44 +388,103 @@ def main():
 
     # These experiment settings are here because the task explicitly asks us
     # to compare different architecture and training choices.
+    # experiments = [
+    #     {
+    #         "name": "baseline",
+    #         "filters": (32, 64, 128, 256),
+    #         "dense_units": 256,
+    #         "dropout": 0.40,
+    #         "use_batchnorm": True,
+    #         "learning_rate": 1e-3,
+    #         "epochs": EPOCHS,
+    #     },
+    #     {
+    #         "name": "fewer_layers",
+    #         "filters": (32, 64, 128),
+    #         "dense_units": 256,
+    #         "dropout": 0.30,
+    #         "use_batchnorm": True,
+    #         "learning_rate": 1e-3,
+    #         "epochs": EPOCHS,
+    #     },
+    #     {
+    #         "name": "no_batchnorm",
+    #         "filters": (32, 64, 128, 256),
+    #         "dense_units": 256,
+    #         "dropout": 0.40,
+    #         "use_batchnorm": False,
+    #         "learning_rate": 1e-3,
+    #         "epochs": EPOCHS,
+    #     },
+    #     {
+    #         "name": "lower_lr_deeper",
+    #         "filters": (32, 64, 128, 256, 512),
+    #         "dense_units": 256,
+    #         "dropout": 0.50,
+    #         "use_batchnorm": True,
+    #         "learning_rate": 5e-4,
+    #         "epochs": EPOCHS,
+    #     },
+    # ]
+
     experiments = [
+
         {
-            "name": "baseline",
-            "filters": (32, 64, 128, 256),
-            "dense_units": 256,
-            "dropout": 0.40,
-            "use_batchnorm": True,
-            "learning_rate": 1e-3,
-            "epochs": EPOCHS,
+        "name": "baseline_adam",
+        "filters": (32,64,128,256),
+        "dense_units": 256,
+        "dropout": 0.40,
+        "use_batchnorm": True,
+        "learning_rate": 0.001,
+        "optimizer": "Adam",
+        "epochs": EPOCHS
         },
+
         {
-            "name": "fewer_layers",
-            "filters": (32, 64, 128),
-            "dense_units": 256,
-            "dropout": 0.30,
-            "use_batchnorm": True,
-            "learning_rate": 1e-3,
-            "epochs": EPOCHS,
+        "name": "adam_lower_lr",
+        "filters": (32,64,128,256),
+        "dense_units": 256,
+        "dropout": 0.40,
+        "use_batchnorm": True,
+        "learning_rate": 0.0005,
+        "optimizer": "Adam",
+        "epochs": EPOCHS
         },
+
         {
-            "name": "no_batchnorm",
-            "filters": (32, 64, 128, 256),
-            "dense_units": 256,
-            "dropout": 0.40,
-            "use_batchnorm": False,
-            "learning_rate": 1e-3,
-            "epochs": EPOCHS,
+        "name": "sgd_model",
+        "filters": (32,64,128,256),
+        "dense_units": 256,
+        "dropout": 0.40,
+        "use_batchnorm": True,
+        "learning_rate": 0.01,
+        "optimizer": "SGD",
+        "epochs": EPOCHS
         },
+
         {
-            "name": "lower_lr_deeper",
-            "filters": (32, 64, 128, 256, 512),
-            "dense_units": 256,
-            "dropout": 0.50,
-            "use_batchnorm": True,
-            "learning_rate": 5e-4,
-            "epochs": EPOCHS,
+        "name": "larger_dense",
+        "filters": (32,64,128,256),
+        "dense_units": 512,
+        "dropout": 0.40,
+        "use_batchnorm": True,
+        "learning_rate": 0.001,
+        "optimizer": "Adam",
+        "epochs": EPOCHS
         },
-    ]
+
+        {
+        "name": "higher_dropout",
+        "filters": (32,64,128,256),
+        "dense_units": 256,
+        "dropout": 0.50,
+        "use_batchnorm": True,
+        "learning_rate": 0.001,
+        "optimizer": "Adam",
+        "epochs": EPOCHS
+        }
+
+        ]
 
     history_rows = []
     # Train and evaluate each experiment one after another.
