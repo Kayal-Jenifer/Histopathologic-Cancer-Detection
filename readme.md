@@ -42,47 +42,46 @@ kaggle competitions download -c histopathologic-cancer-detection
 unzip histopathologic-cancer-detection.zip -d data/
 ```
 ## Project Overview
-This project performs binary classification (tumor vs normal) on the Histopathologic Cancer Detection dataset (96×96 RGB patches).
-I implemented and compared:
+## Unsupervised Learning (Feature Extraction)
 
-Unsupervised feature extraction with a CNN Autoencoder (latent vectors)
-Transfer learning using ResNet50 as a frozen feature extractor (deep features) + optional PCA compression
-Baseline CNN trained from scratch end-to-end on images + labels
-Supervised custom CNN using the same PyTorch project structure as the unsupervised pipeline
+Our unsupervised component is implemented in `src/unsupervised.py` and focuses on **feature extraction**:
+
+- Train an unsupervised **denoising convolutional autoencoder (CAE)** on unlabeled images.
+- Use the encoder bottleneck as a learned feature vector per patch.
+- Run a **transfer learning** experiment to analyze how **pre-training** affects supervised performance on the same cancer vs no-cancer labels.
+
+---
+
+
 
 ## Metrics reported:
 
-Accuracy
-Precision / Recall / F1-score
-ROC-AUC
+`src/unsupervised.py` reports:
+
+- **Autoencoder reconstruction MSE** per epoch (and the **best epoch** by lowest MSE).
+- **Transfer learning supervised metrics** using Logistic Regression on frozen ResNet18 features:
+  - **Accuracy**
+  - **ROC-AUC**
+
 ---
 
 ## Project Folder Structure
 
 ```
-project/
+Histopathologic-Cancer-Detection/
 ├── src/
-│   └── data_loader.py 
-        unsupervised/
-      __main__.py
-      runner.py
-      datasets.py
-      models.py
-      train.py
-      utils.py
-         ← Data pipeline script
+│   ├── data_exploration.py
+│   ├── supervised_learning.py
+│   ├── unsupervised.py
+│   └── newreadme.md
 ├── data/
-│   ├── train/                  ← 220,025 .tif images go here
-│   └── train_labels.csv        ← label file (id | label)
+│   ├── train/               ← .tif images
+│   └── train_labels.csv     ← labels (id, label)
 └── results/
-    └── screenshots/            ← auto-created when script runs
-        ├── class_distribution.png
-        ├── split_distribution.png
-        └── sample_images.png
-``` └── pipeline/
+    └── screenshots/         ← plots saved by scripts
+```
 
 ---
-
 ## Dependencies
 
 Install all required libraries:
@@ -101,12 +100,6 @@ On first use, pretrained ResNet50 weights may download into the local PyTorch ca
 ```bash
 python src/data_loader.py
 ```
-2) Unsupervised + transfer learning pipeline
-Run as a module from inside src/:
-
-cd Histopathologic-Cancer-Detection/src
-python -m unsupervised
-
 3) Supervised custom CNN
 Run as a module from inside `src/`:
 
@@ -119,6 +112,12 @@ Run the prepared supervised experiment set:
 
 ```bash
 python3 src/supervised_experiments.py
+```
+## How to Run (Unsupervised)
+From `Histopathologic-Cancer-Detection/`:
+
+```bash
+python src/unsupervised.py
 ```
 ---
 
@@ -133,57 +132,17 @@ python3 src/supervised_experiments.py
 7. Saves 3 screenshots to `results/screenshots/`
 
 ---
-### What the Pipeline Does
+## What `src/unsupervised.py` Does
 
-1) **Create / load cached splits**  
-- `results/pipeline/splits.npz`
+1. Loads a balanced labeled subset (1,000 cancer + 1,000 no-cancer) from `data/train_labels.csv`.
+2. Trains a denoising CAE and prints epoch-wise reconstruction MSE + best epoch.
+3. Extracts and prints the encoder feature shape (sanity check for feature extraction).
+4. Runs transfer-learning evaluation on the supervised labels:
+   - ResNet18 features without pre-training vs ImageNet pre-trained ResNet18
+   - Reports Accuracy and ROC-AUC.
+5. Saves performance visuals to `results/screenshots/`.
 
-2) **Autoencoder (unsupervised feature extraction)**  
-- Trains a CNN autoencoder using images only (no labels)  
-- Latent features:
-  - `results/pipeline/autoencoder/features/ae_latents_train.npz`
-  - `results/pipeline/autoencoder/features/ae_latents_val.npz`
-  - `results/pipeline/autoencoder/features/ae_latents_test.npz`
-- Best checkpoint:
-  - `results/pipeline/autoencoder/checkpoints/autoencoder_best.pt`
-- Training history:
-  - `results/pipeline/logs/ae_history.csv`
-
-3) **Transfer learning (ResNet50 feature extraction, frozen)**  
-- PCA model:
-  - `results/pipeline/transfer_learning/features/resnet50_pca256.joblib`
-- PCA features:
-  - `results/pipeline/transfer_learning/features/resnet50_pca256_train.npz`
-  - `results/pipeline/transfer_learning/features/resnet50_pca256_val.npz`
-  - `results/pipeline/transfer_learning/features/resnet50_pca256_test.npz`
-
-4) **Baseline CNN (from scratch)**  
-- Best checkpoint:
-  - `results/pipeline/baseline_cnn/checkpoints/baseline_best.pt`
-- Training history:
-  - `results/pipeline/logs/cnn_history.csv`
-
-5) **Supervised custom CNN**  
-- Best checkpoint:
-  - `results/supervised_cnn/checkpoints/<run_name>/custom_cnn_best.pt`
-- Training history:
-  - `results/supervised_cnn/logs/<run_name>_history.csv`
-- Metrics:
-  - `results/supervised_cnn/tables/metrics.csv`
-- Experiment summary:
-  - `report/supervised_experiments.csv`
-
-6) **Metrics + plots**  
-- Metrics table:
-  - `results/pipeline/metrics.csv`
-- Plots:
-  - `results/pipeline/plots/comparison_test.png`
-  - `results/pipeline/plots/roc_curves_test.png`
-
-Notes on Re-running
-The pipeline caches splits, features, and best checkpoints. If cached files exist, it skips expensive steps unless you enable the “force re-extract” settings inside src/unsupervised/runner.py.
-
-
+---
 
 ## Output Screenshots
 
@@ -194,20 +153,14 @@ The pipeline caches splits, features, and best checkpoints. If cached files exis
 | `sample_images.png` | 4 no-cancer (top) and 4 cancer (bottom) sample tissue patches |
 
 ---
+## Unsupervised Output Screenshots
+
+| File | Description |
+|------|-------------|
+| `results/screenshots/unsupervised_ae_mse.png` | Autoencoder training curve (reconstruction MSE vs epoch) |
+| `results/screenshots/unsupervised_transfer_learning.png` | Bar chart comparing no pre-training vs ImageNet pre-training (Accuracy, ROC-AUC) |
 ### Results (Example Output)
-After running the pipeline, the terminal prints metrics for each method and saves a summary table to:
 
-- `results/pipeline/metrics.csv`
-
-The project compares:
-- **Baseline CNN** — final test metrics printed in terminal
-- **Supervised custom CNN** — configurable custom architecture trained from scratch
-- **Autoencoder latent features + classifier** — val/test metrics printed in terminal
-- **ResNet50 (frozen) PCA features + classifier** — val/test metrics printed in terminal
-
-The pipeline also saves comparison visuals to:
-- `results/pipeline/plots/comparison_test.png` (bar chart comparison)
-- `results/pipeline/plots/roc_curves_test.png` (ROC curves)
 
 ### Supervised CNN Experiment Controls
 
