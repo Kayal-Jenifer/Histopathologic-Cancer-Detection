@@ -337,6 +337,7 @@ def save_training_plots(history_rows):
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
         plt.savefig(SCREENSHOTS_DIR / f"{experiment_name}_training_loss.png", dpi=150)
+        plt.show()
         plt.close()
 
         plt.figure(figsize=(8, 5))
@@ -349,6 +350,7 @@ def save_training_plots(history_rows):
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
         plt.savefig(SCREENSHOTS_DIR / f"{experiment_name}_validation_metrics.png", dpi=150)
+        plt.show()
         plt.close()
 
 

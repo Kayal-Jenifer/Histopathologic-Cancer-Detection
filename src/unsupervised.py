@@ -223,6 +223,7 @@ def save_ae_mse_plot(mse_history: list[float]) -> None:
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(SCREENSHOTS_DIR / "unsupervised_ae_mse.png", dpi=150, bbox_inches="tight")
+    plt.show()
     plt.close()
 
 
@@ -317,6 +318,7 @@ def save_transfer_learning_plot(metrics_no_pretrain: tuple[float, float], metric
     plt.legend()
     plt.tight_layout()
     plt.savefig(SCREENSHOTS_DIR / "unsupervised_transfer_learning.png", dpi=150, bbox_inches="tight")
+    plt.show()
     plt.close()
 
 
