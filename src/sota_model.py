@@ -20,16 +20,18 @@ class SOTAConfig:
     l2_weight: float = 1e-4
 
 
-def build_efficientnet(config: SOTAConfig):
+def build_efficientnet(config: SOTAConfig, pretrained=True):
     base_model = tf.keras.applications.EfficientNetB0(
         include_top=False,
-        weights="imagenet",
+        weights="imagenet" if pretrained else None,
         input_shape=config.input_shape,
     )
-    base_model.trainable = False
+
+    if pretrained:
+        base_model.trainable = False
 
     inputs = layers.Input(shape=config.input_shape, name="input_image")
-    x = base_model(inputs, training=False)
+    x = base_model(inputs, training=not pretrained)
     x = layers.GlobalAveragePooling2D(name="gap")(x)
     x = layers.BatchNormalization(name="head_bn")(x)
     x = layers.Dense(

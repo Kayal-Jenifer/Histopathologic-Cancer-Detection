@@ -1,5 +1,6 @@
 """
-Train SOTA — EfficientNetB0 Fine-Tuning for Histopathologic Cancer Detection
+Train SOTA — EfficientNetB0 for Histopathologic Cancer Detection
+Runs both pretrained (ImageNet) and from-scratch versions, then compares.
 
 Usage:
   python train_sota.py --csv data/train_labels.csv --image_dir data/train
@@ -74,91 +75,6 @@ def make_efficientnet_dataset(df, image_dir, batch_size=32, shuffle=False, augme
     return ds
 
 
-def save_history_plots(phase1_df, phase2_df, output_dir):
-    output = Path(output_dir)
-    output.mkdir(parents=True, exist_ok=True)
-
-    total_epochs_p1 = len(phase1_df)
-    phase2_df_shifted = phase2_df.copy()
-    phase2_df_shifted.index = phase2_df_shifted.index + total_epochs_p1
-
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-    axes[0].plot(phase1_df.index + 1, phase1_df["accuracy"], "b-", label="Train Acc (Phase 1)")
-    axes[0].plot(phase1_df.index + 1, phase1_df["val_accuracy"], "b--", label="Val Acc (Phase 1)")
-    axes[0].plot(phase2_df_shifted.index + 1, phase2_df_shifted["accuracy"], "r-", label="Train Acc (Phase 2)")
-    axes[0].plot(phase2_df_shifted.index + 1, phase2_df_shifted["val_accuracy"], "r--", label="Val Acc (Phase 2)")
-    axes[0].axvline(x=total_epochs_p1 + 0.5, color="gray", linestyle=":", label="Unfreeze point")
-    axes[0].set_xlabel("Epoch")
-    axes[0].set_ylabel("Accuracy")
-    axes[0].set_title("EfficientNet — Accuracy vs Epoch")
-    axes[0].legend(fontsize=8)
-    axes[0].grid(True, alpha=0.3)
-
-    axes[1].plot(phase1_df.index + 1, phase1_df["loss"], "b-", label="Train Loss (Phase 1)")
-    axes[1].plot(phase1_df.index + 1, phase1_df["val_loss"], "b--", label="Val Loss (Phase 1)")
-    axes[1].plot(phase2_df_shifted.index + 1, phase2_df_shifted["loss"], "r-", label="Train Loss (Phase 2)")
-    axes[1].plot(phase2_df_shifted.index + 1, phase2_df_shifted["val_loss"], "r--", label="Val Loss (Phase 2)")
-    axes[1].axvline(x=total_epochs_p1 + 0.5, color="gray", linestyle=":", label="Unfreeze point")
-    axes[1].set_xlabel("Epoch")
-    axes[1].set_ylabel("Loss")
-    axes[1].set_title("EfficientNet — Loss vs Epoch")
-    axes[1].legend(fontsize=8)
-    axes[1].grid(True, alpha=0.3)
-
-    plt.suptitle("EfficientNetB0 SOTA — Two-Phase Training", fontsize=13, fontweight="bold")
-    plt.tight_layout()
-    plt.savefig(output / "sota_accuracy_loss.png", dpi=300)
-    plt.close()
-
-
-def save_roc_curve(y_true, y_prob, output_dir):
-    output = Path(output_dir)
-    output.mkdir(parents=True, exist_ok=True)
-
-    fpr, tpr, _ = roc_curve(y_true, y_prob)
-    auc_score = roc_auc_score(y_true, y_prob)
-
-    plt.figure(figsize=(7, 6))
-    plt.plot(fpr, tpr, "b-", linewidth=2, label=f"EfficientNetB0 (AUC = {auc_score:.4f})")
-    plt.plot([0, 1], [0, 1], "k--", alpha=0.4, label="Random Classifier")
-    plt.xlabel("False Positive Rate")
-    plt.ylabel("True Positive Rate")
-    plt.title("EfficientNetB0 SOTA — ROC Curve (Test Set)")
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(output / "sota_roc_curve.png", dpi=300)
-    plt.close()
-
-
-def save_confusion_matrix_plot(y_true, y_pred, output_dir):
-    output = Path(output_dir)
-    output.mkdir(parents=True, exist_ok=True)
-
-    cm = confusion_matrix(y_true, y_pred)
-    fig, ax = plt.subplots(figsize=(6, 5))
-    im = ax.imshow(cm, cmap="Blues")
-    ax.set_xticks([0, 1])
-    ax.set_yticks([0, 1])
-    ax.set_xticklabels(["No Cancer", "Cancer"])
-    ax.set_yticklabels(["No Cancer", "Cancer"])
-    ax.set_xlabel("Predicted")
-    ax.set_ylabel("Actual")
-    ax.set_title("EfficientNetB0 SOTA — Confusion Matrix (Test Set)")
-
-    for i in range(2):
-        for j in range(2):
-            ax.text(j, i, str(cm[i, j]), ha="center", va="center",
-                    fontsize=16, fontweight="bold",
-                    color="white" if cm[i, j] > cm.max() / 2 else "black")
-
-    plt.colorbar(im)
-    plt.tight_layout()
-    plt.savefig(output / "sota_confusion_matrix.png", dpi=300)
-    plt.close()
-
-
 def save_metrics_report(y_true, y_prob, output_dir, threshold=0.5):
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -174,6 +90,201 @@ def save_metrics_report(y_true, y_prob, output_dir, threshold=0.5):
         json.dump(metrics, f, indent=2)
 
     return metrics
+
+
+def save_plots(phase1_df, phase2_df, y_true, y_prob, y_pred, output_dir, label="pretrained"):
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+
+    # Accuracy and loss curves
+    total_epochs_p1 = len(phase1_df)
+    phase2_df_shifted = phase2_df.copy()
+    phase2_df_shifted.index = phase2_df_shifted.index + total_epochs_p1
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    axes[0].plot(phase1_df.index + 1, phase1_df["accuracy"], "b-", label="Train Acc (Phase 1)")
+    axes[0].plot(phase1_df.index + 1, phase1_df["val_accuracy"], "b--", label="Val Acc (Phase 1)")
+    axes[0].plot(phase2_df_shifted.index + 1, phase2_df_shifted["accuracy"], "r-", label="Train Acc (Phase 2)")
+    axes[0].plot(phase2_df_shifted.index + 1, phase2_df_shifted["val_accuracy"], "r--", label="Val Acc (Phase 2)")
+    axes[0].axvline(x=total_epochs_p1 + 0.5, color="gray", linestyle=":", label="Unfreeze point")
+    axes[0].set_xlabel("Epoch")
+    axes[0].set_ylabel("Accuracy")
+    axes[0].set_title(f"EfficientNet ({label}) — Accuracy")
+    axes[0].legend(fontsize=8)
+    axes[0].grid(True, alpha=0.3)
+
+    axes[1].plot(phase1_df.index + 1, phase1_df["loss"], "b-", label="Train Loss (Phase 1)")
+    axes[1].plot(phase1_df.index + 1, phase1_df["val_loss"], "b--", label="Val Loss (Phase 1)")
+    axes[1].plot(phase2_df_shifted.index + 1, phase2_df_shifted["loss"], "r-", label="Train Loss (Phase 2)")
+    axes[1].plot(phase2_df_shifted.index + 1, phase2_df_shifted["val_loss"], "r--", label="Val Loss (Phase 2)")
+    axes[1].axvline(x=total_epochs_p1 + 0.5, color="gray", linestyle=":", label="Unfreeze point")
+    axes[1].set_xlabel("Epoch")
+    axes[1].set_ylabel("Loss")
+    axes[1].set_title(f"EfficientNet ({label}) — Loss")
+    axes[1].legend(fontsize=8)
+    axes[1].grid(True, alpha=0.3)
+
+    plt.suptitle(f"EfficientNetB0 — {label}", fontsize=13, fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(output / f"sota_{label}_accuracy_loss.png", dpi=300)
+    plt.close()
+
+    # ROC curve
+    fpr, tpr, _ = roc_curve(y_true, y_prob)
+    auc_score = roc_auc_score(y_true, y_prob)
+
+    plt.figure(figsize=(7, 6))
+    plt.plot(fpr, tpr, "b-", linewidth=2, label=f"EfficientNetB0 {label} (AUC = {auc_score:.4f})")
+    plt.plot([0, 1], [0, 1], "k--", alpha=0.4, label="Random Classifier")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title(f"EfficientNetB0 ({label}) — ROC Curve")
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output / f"sota_{label}_roc_curve.png", dpi=300)
+    plt.close()
+
+    # Confusion matrix
+    cm = confusion_matrix(y_true, y_pred)
+    fig, ax = plt.subplots(figsize=(6, 5))
+    im = ax.imshow(cm, cmap="Blues")
+    ax.set_xticks([0, 1])
+    ax.set_yticks([0, 1])
+    ax.set_xticklabels(["No Cancer", "Cancer"])
+    ax.set_yticklabels(["No Cancer", "Cancer"])
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("Actual")
+    ax.set_title(f"EfficientNetB0 ({label}) — Confusion Matrix")
+
+    for i in range(2):
+        for j in range(2):
+            ax.text(j, i, str(cm[i, j]), ha="center", va="center",
+                    fontsize=16, fontweight="bold",
+                    color="white" if cm[i, j] > cm.max() / 2 else "black")
+
+    plt.colorbar(im)
+    plt.tight_layout()
+    plt.savefig(output / f"sota_{label}_confusion_matrix.png", dpi=300)
+    plt.close()
+
+
+def run_experiment(config, train_ds, val_ds, test_ds, output_dir, pretrained=True):
+    label = "pretrained" if pretrained else "from_scratch"
+    out = Path(output_dir)
+
+    print("\n" + "=" * 60)
+    print(f"  BUILDING EFFICIENTNETB0 ({label.upper()})")
+    print("=" * 60)
+
+    model, base_model = build_efficientnet(config, pretrained=pretrained)
+    model = compile_model(model, learning_rate=config.phase1_learning_rate)
+
+    trainable = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
+    frozen = sum(tf.keras.backend.count_params(w) for w in model.non_trainable_weights)
+    print(f"  Pretrained       : {pretrained}")
+    print(f"  Trainable params : {trainable:,}")
+    print(f"  Frozen params    : {frozen:,}")
+
+    # Phase 1
+    print(f"\n  PHASE 1 — {'TRAINING HEAD (BASE FROZEN)' if pretrained else 'TRAINING ALL LAYERS'}")
+
+    history_p1 = model.fit(
+        train_ds, validation_data=val_ds, epochs=config.phase1_epochs,
+        callbacks=get_callbacks(output_dir, phase=f"{label}_phase1"), verbose=1,
+    )
+    phase1_df = pd.DataFrame(history_p1.history)
+    phase1_df.to_csv(out / "logs" / f"sota_{label}_phase1_history.csv")
+
+    print(f"\n  Phase 1 best — Val Acc: {max(history_p1.history['val_accuracy']):.4f} | Val AUC: {max(history_p1.history['val_auc']):.4f}")
+
+    # Phase 2
+    if pretrained:
+        print(f"\n  PHASE 2 — FINE-TUNING TOP LAYERS")
+        model = unfreeze_top_layers(model, base_model, config)
+    else:
+        print(f"\n  PHASE 2 — CONTINUED TRAINING (ALL LAYERS)")
+        compile_model(model, learning_rate=config.phase2_learning_rate)
+
+    history_p2 = model.fit(
+        train_ds, validation_data=val_ds, epochs=config.phase2_epochs,
+        callbacks=get_callbacks(output_dir, phase=f"{label}_phase2"), verbose=1,
+    )
+    phase2_df = pd.DataFrame(history_p2.history)
+    phase2_df.to_csv(out / "logs" / f"sota_{label}_phase2_history.csv")
+
+    print(f"\n  Phase 2 best — Val Acc: {max(history_p2.history['val_accuracy']):.4f} | Val AUC: {max(history_p2.history['val_auc']):.4f}")
+
+    # Evaluate on test set
+    print(f"\n  EVALUATING ({label.upper()}) ON TEST SET")
+
+    y_prob = model.predict(test_ds).ravel()
+    y_true = np.concatenate([y.numpy() for _, y in test_ds], axis=0)
+    y_pred = (y_prob >= 0.5).astype(int)
+
+    eval_results = model.evaluate(test_ds, verbose=0)
+    eval_dict = dict(zip(model.metrics_names, eval_results))
+    metrics = save_metrics_report(y_true, y_prob, str(out / "tables"))
+
+    print(f"\n  Classification Report ({label}):")
+    print(classification_report(y_true, y_pred, target_names=["No Cancer", "Cancer"]))
+
+    # Save plots
+    save_plots(phase1_df, phase2_df, y_true, y_prob, y_pred, str(out / "graphs"), label=label)
+
+    # Save model
+    model.save(out / "models" / f"final_sota_{label}.keras")
+
+    # Get summary metrics
+    test_acc = eval_dict.get("accuracy", eval_dict.get("compile_metrics", 0.0))
+    cr = metrics["classification_report"]
+    cancer_key = '1.0' if '1.0' in cr else '1'
+
+    return {
+        "model": label,
+        "accuracy": test_acc,
+        "precision": cr[cancer_key]["precision"],
+        "recall": cr[cancer_key]["recall"],
+        "f1_score": cr[cancer_key]["f1-score"],
+        "roc_auc": metrics["roc_auc"],
+    }
+
+
+def save_comparison(results, output_dir):
+    out = Path(output_dir)
+
+    # Comparison table
+    comp_df = pd.DataFrame(results)
+    comp_df.to_csv(out / "tables" / "sota_comparison.csv", index=False)
+
+    # Comparison bar chart
+    metrics_to_plot = ["accuracy", "precision", "recall", "f1_score", "roc_auc"]
+    x = np.arange(len(metrics_to_plot))
+    width = 0.35
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    bars1 = ax.bar(x - width / 2, [results[0][m] for m in metrics_to_plot], width, label="Pretrained (ImageNet)", color="#4C9BE8")
+    bars2 = ax.bar(x + width / 2, [results[1][m] for m in metrics_to_plot], width, label="From Scratch (Random)", color="#E8714C")
+
+    ax.set_ylabel("Score")
+    ax.set_title("EfficientNetB0 — Pretrained vs From Scratch")
+    ax.set_xticks(x)
+    ax.set_xticklabels(["Accuracy", "Precision", "Recall", "F1-Score", "ROC-AUC"])
+    ax.legend()
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, alpha=0.3, axis="y")
+
+    for bar in bars1:
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
+                f"{bar.get_height():.3f}", ha="center", fontsize=8)
+    for bar in bars2:
+        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
+                f"{bar.get_height():.3f}", ha="center", fontsize=8)
+
+    plt.tight_layout()
+    plt.savefig(out / "graphs" / "sota_pretrained_vs_scratch.png", dpi=300)
+    plt.close()
 
 
 def parse_args():
@@ -222,7 +333,7 @@ def main():
     print(f"  Val   : {len(val_df):,}")
     print(f"  Test  : {len(test_df):,}")
 
-    # 2. Create datasets (224x224)
+    # 2. Create datasets
     print("\n" + "=" * 60)
     print("  2. CREATING DATASETS (224x224)")
     print("=" * 60)
@@ -234,12 +345,6 @@ def main():
     sample_imgs, sample_lbls = next(iter(train_ds))
     print(f"  Batch shape : {tuple(sample_imgs.shape)}")
     print(f"  Label shape : {tuple(sample_lbls.shape)}")
-    print(f"  Pixel range : [{sample_imgs.numpy().min():.2f}, {sample_imgs.numpy().max():.2f}]")
-
-    # 3. Build model
-    print("\n" + "=" * 60)
-    print("  3. BUILDING EFFICIENTNETB0")
-    print("=" * 60)
 
     config = SOTAConfig(
         batch_size=args.batch_size,
@@ -248,113 +353,39 @@ def main():
         phase1_learning_rate=args.phase1_lr,
         phase2_learning_rate=args.phase2_lr,
     )
-    model, base_model = build_efficientnet(config)
-    model = compile_model(model, learning_rate=config.phase1_learning_rate)
 
-    trainable = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
-    frozen = sum(tf.keras.backend.count_params(w) for w in model.non_trainable_weights)
-    print(f"  Trainable params (Phase 1) : {trainable:,}")
-    print(f"  Frozen params              : {frozen:,}")
-    print(f"  Base model layers          : {len(base_model.layers)}")
+    results = []
 
-    # 4. Phase 1: Train head (base frozen)
+    # 3. Run pretrained version
+    print("\n" + "#" * 60)
+    print("  EXPERIMENT 1: PRETRAINED (ImageNet weights)")
+    print("#" * 60)
+    r1 = run_experiment(config, train_ds, val_ds, test_ds, args.output_dir, pretrained=True)
+    results.append(r1)
+
+    # 4. Run from-scratch version
+    print("\n" + "#" * 60)
+    print("  EXPERIMENT 2: FROM SCRATCH (random weights)")
+    print("#" * 60)
+    r2 = run_experiment(config, train_ds, val_ds, test_ds, args.output_dir, pretrained=False)
+    results.append(r2)
+
+    # 5. Compare
     print("\n" + "=" * 60)
-    print("  4. PHASE 1 — TRAINING HEAD (BASE FROZEN)")
+    print("  COMPARISON — PRETRAINED vs FROM SCRATCH")
     print("=" * 60)
 
-    history_p1 = model.fit(
-        train_ds, validation_data=val_ds, epochs=config.phase1_epochs,
-        callbacks=get_callbacks(args.output_dir, phase="phase1"), verbose=1,
-    )
-    phase1_df = pd.DataFrame(history_p1.history)
-    phase1_df.index.name = "epoch"
-    phase1_df.to_csv(out / "logs" / "sota_phase1_history.csv")
+    save_comparison(results, args.output_dir)
 
-    p1_val_acc = max(history_p1.history["val_accuracy"])
-    p1_val_auc = max(history_p1.history["val_auc"])
-    print(f"\n  Phase 1 best — Val Acc: {p1_val_acc:.4f} | Val AUC: {p1_val_auc:.4f}")
+    print(f"\n  {'Metric':<15} {'Pretrained':>12} {'From Scratch':>14} {'Difference':>12}")
+    print("  " + "-" * 55)
+    for m in ["accuracy", "precision", "recall", "f1_score", "roc_auc"]:
+        diff = r1[m] - r2[m]
+        sign = "+" if diff > 0 else ""
+        print(f"  {m:<15} {r1[m]:>12.4f} {r2[m]:>14.4f} {sign}{diff:>11.4f}")
 
-    # 5. Phase 2: Fine-tune top layers
-    print("\n" + "=" * 60)
-    print("  5. PHASE 2 — FINE-TUNING TOP LAYERS")
-    print("=" * 60)
-
-    model = unfreeze_top_layers(model, base_model, config)
-
-    trainable_p2 = sum(tf.keras.backend.count_params(w) for w in model.trainable_weights)
-    print(f"  Trainable params (Phase 2) : {trainable_p2:,}")
-    print(f"  Unfrozen from layer        : {config.unfreeze_from} / {len(base_model.layers)}")
-
-    history_p2 = model.fit(
-        train_ds, validation_data=val_ds, epochs=config.phase2_epochs,
-        callbacks=get_callbacks(args.output_dir, phase="phase2"), verbose=1,
-    )
-    phase2_df = pd.DataFrame(history_p2.history)
-    phase2_df.index.name = "epoch"
-    phase2_df.to_csv(out / "logs" / "sota_phase2_history.csv")
-
-    p2_val_acc = max(history_p2.history["val_accuracy"])
-    p2_val_auc = max(history_p2.history["val_auc"])
-    print(f"\n  Phase 2 best — Val Acc: {p2_val_acc:.4f} | Val AUC: {p2_val_auc:.4f}")
-
-    # 6. Save combined history
-    combined_df = pd.concat([phase1_df, phase2_df], ignore_index=True)
-    combined_df.index.name = "epoch"
-    combined_df.to_csv(out / "logs" / "sota_full_history.csv")
-
-    # 7. Evaluate on test set
-    print("\n" + "=" * 60)
-    print("  6. EVALUATING ON TEST SET")
-    print("=" * 60)
-
-    y_prob = model.predict(test_ds).ravel()
-    y_true = np.concatenate([y.numpy() for _, y in test_ds], axis=0)
-    y_pred = (y_prob >= 0.5).astype(int)
-
-    eval_results = model.evaluate(test_ds, verbose=0)
-    eval_dict = dict(zip(model.metrics_names, eval_results))
-    metrics = save_metrics_report(y_true, y_prob, str(out / "tables"))
-    pd.DataFrame([eval_dict]).to_csv(out / "tables" / "sota_test_results.csv", index=False)
-
-    print("\n  Classification Report:")
-    print(classification_report(y_true, y_pred, target_names=["No Cancer", "Cancer"]))
-
-    print("  === Final Test Metrics ===")
-    for key, value in eval_dict.items():
-        print(f"  {key}: {value:.4f}")
-    print(f"  ROC-AUC: {metrics['roc_auc']:.4f}")
-
-    # 8. Save plots
-    print("\n" + "=" * 60)
-    print("  7. SAVING PLOTS")
-    print("=" * 60)
-
-    save_history_plots(phase1_df, phase2_df, str(out / "graphs"))
-    save_roc_curve(y_true, y_prob, str(out / "graphs"))
-    save_confusion_matrix_plot(y_true, y_pred, str(out / "graphs"))
-
-    # 9. Save final model
-    model.save(out / "models" / "final_sota.keras")
-    print(f"\n  Final model saved to {out / 'models' / 'final_sota.keras'}")
-
-    # 10. Summary
-    print("\n" + "=" * 60)
-    print("  SUMMARY")
-    print("=" * 60)
-    cr = metrics["classification_report"]
-    test_acc = eval_dict.get("accuracy", eval_dict.get("compile_metrics", 0.0))
-    cancer_key = '1.0' if '1.0' in cr else '1'
-    print(f"  model_name    : EfficientNetB0_SOTA")
-    print(f"  train_samples : {len(train_df)}")
-    print(f"  val_samples   : {len(val_df)}")
-    print(f"  test_samples  : {len(test_df)}")
-    print(f"  accuracy      : {test_acc:.4f}")
-    print(f"  precision     : {cr[cancer_key]['precision']:.4f}")
-    print(f"  recall        : {cr[cancer_key]['recall']:.4f}")
-    print(f"  f1_score      : {cr[cancer_key]['f1-score']:.4f}")
-    print(f"  roc_auc       : {metrics['roc_auc']:.4f}")
-
-    print("\n  Done! All outputs saved to:", out.resolve())
+    print(f"\n  Pre-training {'improved' if r1['roc_auc'] > r2['roc_auc'] else 'did not improve'} ROC-AUC by {abs(r1['roc_auc'] - r2['roc_auc']):.4f}")
+    print(f"\n  Done! All outputs saved to: {out.resolve()}")
 
 
 if __name__ == "__main__":
