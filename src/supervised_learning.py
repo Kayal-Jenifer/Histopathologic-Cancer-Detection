@@ -141,7 +141,7 @@ def make_transforms():
             T.RandomHorizontalFlip(),
             T.RandomVerticalFlip(),
             T.RandomRotation(90),
-            T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+            T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
             T.ToTensor(),
             T.Normalize(MEAN, STD),
         ]
@@ -156,6 +156,8 @@ def make_transforms():
 # Similar idea used in data_exploration 1,000 no-cancer + 1,000 cancer images, then a stratified split.
 def make_splits():
     df_full = pd.read_csv(LABELS_CSV)
+    existing = {p.stem for p in TRAIN_DIR.glob("*.tif")}
+    df_full = df_full[df_full["id"].isin(existing)].reset_index(drop=True)
     neg_sample = df_full[df_full["label"] == 0].sample(SAMPLES_PER_CLASS, random_state=SEED)
     pos_sample = df_full[df_full["label"] == 1].sample(SAMPLES_PER_CLASS, random_state=SEED)
     df = pd.concat([neg_sample, pos_sample]).sample(frac=1, random_state=SEED).reset_index(drop=True)
