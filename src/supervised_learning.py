@@ -141,7 +141,7 @@ def make_transforms():
             T.RandomHorizontalFlip(),
             T.RandomVerticalFlip(),
             T.RandomRotation(90),
-            T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+            T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
             T.ToTensor(),
             T.Normalize(MEAN, STD),
         ]
@@ -156,6 +156,8 @@ def make_transforms():
 # Similar idea used in data_exploration 1,000 no-cancer + 1,000 cancer images, then a stratified split.
 def make_splits():
     df_full = pd.read_csv(LABELS_CSV)
+    existing = {p.stem for p in TRAIN_DIR.glob("*.tif")}
+    df_full = df_full[df_full["id"].isin(existing)].reset_index(drop=True)
     neg_sample = df_full[df_full["label"] == 0].sample(SAMPLES_PER_CLASS, random_state=SEED)
     pos_sample = df_full[df_full["label"] == 1].sample(SAMPLES_PER_CLASS, random_state=SEED)
     df = pd.concat([neg_sample, pos_sample]).sample(frac=1, random_state=SEED).reset_index(drop=True)
@@ -337,6 +339,7 @@ def save_training_plots(history_rows):
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
         plt.savefig(SCREENSHOTS_DIR / f"{experiment_name}_training_loss.png", dpi=150)
+        plt.show()
         plt.close()
 
         plt.figure(figsize=(8, 5))
@@ -349,6 +352,7 @@ def save_training_plots(history_rows):
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
         plt.savefig(SCREENSHOTS_DIR / f"{experiment_name}_validation_metrics.png", dpi=150)
+        plt.show()
         plt.close()
 
 
@@ -445,10 +449,45 @@ def main():
         "optimizer": "Adam",
         "epochs": EPOCHS
         }
+        ,
+
+        {
+        "name": "fewer_layers",
+        "filters": (32,64,128),
+        "dense_units": 256,
+        "dropout": 0.40,
+        "use_batchnorm": True,
+        "learning_rate": 0.001,
+        "optimizer": "Adam",
+        "epochs": EPOCHS
+        },
+
+        {
+        "name": "deeper_model",
+        "filters": (32,64,128,256,512),
+        "dense_units": 256,
+        "dropout": 0.40,
+        "use_batchnorm": True,
+        "learning_rate": 0.001,
+        "optimizer": "Adam",
+        "epochs": EPOCHS
+        },
+
+        {
+        "name": "wider_filters",
+        "filters": (64,128,256,512),
+        "dense_units": 256,
+        "dropout": 0.40,
+        "use_batchnorm": True,
+        "learning_rate": 0.001,
+        "optimizer": "Adam",
+        "epochs": EPOCHS
+        }
 
         ]
 
     history_rows = []
+    results_rows = []   
     # Train and evaluate each experiment one after another.
     for config in experiments:
         best_model, experiment_history = train_one_experiment(config, train_loader, val_loader, device)
@@ -457,14 +496,173 @@ def main():
         test_metrics = evaluate_model(best_model, test_loader, device)
         print(f"  Test metrics    : {test_metrics}")
 
-    # Save screenshots for the training curves.
+        results_rows.append({
+            "Model": config["name"],
+            "Accuracy": test_metrics["accuracy"],
+            "Precision": test_metrics["precision"],
+            "Recall": test_metrics["recall"],
+            "F1": test_metrics["f1"],
+            "ROC_AUC": test_metrics["roc_auc"],
+        })
+
+# Save screenshots for the per-experiment training curves.
     save_training_plots(history_rows)
+
+    save_comparison_plots(results_rows, history_rows)
+    #─────────────────────────────────────────────────────────────────────────────
+    #  Comparison plots across all experiments (hyperparameter comparison visuals)
+    # ─────────────────────────────────────────────────────────────────────────────
+
+def save_comparison_plots(results_rows, history_rows):
+    results = pd.DataFrame(results_rows)
+    history_df = pd.DataFrame(history_rows)
+
+    results.to_csv(RESULTS_DIR / "cnn_hyperparameter_comparison.csv", index=False)
+
+    # ── Chart 1: All 5 metrics grouped bar chart ─────────────────────────────
+    metrics = ["Accuracy", "Precision", "Recall", "F1", "ROC_AUC"]
+    x = np.arange(len(results))
+    width = 0.15
+    colors = ["#2C3E50", "#566573", "#808B96", "#AAB7B8", "#D5D8DC"]
+
+    fig, ax = plt.subplots(figsize=(14, 6))
+    for i, metric in enumerate(metrics):
+        offset = (i - 2) * width
+        bars = ax.bar(x + offset, results[metric], width, label=metric, color=colors[i], edgecolor="white")
+        for bar in bars:
+            h = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width() / 2, h + 0.003,
+                    f"{h:.2f}", ha="center", va="bottom", fontsize=7)
+    ax.set_xticks(x)
+    ax.set_xticklabels(results["Model"], rotation=20, ha="right")
+    ax.set_ylim(0.55, 0.95)
+    ax.set_ylabel("Score")
+    ax.set_title("Supervised CNN — Hyperparameter Comparison (All Test Metrics)", fontweight="bold")
+    ax.legend(loc="lower right")
+    ax.yaxis.grid(True, linestyle="--", alpha=0.4)
+    ax.set_axisbelow(True)
+    plt.tight_layout()
+    plt.savefig(SCREENSHOTS_DIR / "cnn_comparison_all_metrics.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # ── Chart 2: Accuracy comparison ──────────────────────────────────────────
+    plt.figure(figsize=(10, 5))
+    bars = plt.bar(results["Model"], results["Accuracy"], color="#2C3E50", edgecolor="white", width=0.55)
+    for bar in bars:
+        h = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2, h + 0.002,
+                 f"{h:.3f}", ha="center", va="bottom", fontsize=10)
+    plt.title("Model Accuracy Comparison", fontweight="bold")
+    plt.ylabel("Accuracy")
+    plt.xticks(rotation=20, ha="right")
+    plt.grid(axis="y", linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(SCREENSHOTS_DIR / "cnn_comparison_accuracy.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # ── Chart 3: ROC-AUC comparison ───────────────────────────────────────────
+    plt.figure(figsize=(10, 5))
+    bars = plt.bar(results["Model"], results["ROC_AUC"], color="#566573", edgecolor="white", width=0.55)
+    for bar in bars:
+        h = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2, h + 0.0005,
+                 f"{h:.4f}", ha="center", va="bottom", fontsize=10)
+    plt.title("Model ROC-AUC Comparison", fontweight="bold")
+    plt.ylabel("ROC-AUC")
+    plt.xticks(rotation=20, ha="right")
+    plt.grid(axis="y", linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(SCREENSHOTS_DIR / "cnn_comparison_roc_auc.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # ── Chart 4: Recall comparison (most important) ────────────────
+    plt.figure(figsize=(10, 5))
+    max_recall = results["Recall"].max()
+    bar_colors = ["#2C3E50" if r == max_recall else "#808B96" for r in results["Recall"]]
+    bars = plt.bar(results["Model"], results["Recall"], color=bar_colors, edgecolor="white", width=0.55)
+    for bar in bars:
+        h = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2, h + 0.001,
+                 f"{h:.3f}", ha="center", va="bottom", fontsize=10)
+    plt.axhline(y=max_recall, color="#2C3E50", linestyle="--", linewidth=1.2, alpha=0.6,
+                label=f"Best recall = {max_recall:.3f}")
+    plt.title("Cancer Detection Recall Comparison\n(Higher = fewer missed cancers)", fontweight="bold")
+    plt.ylabel("Recall (Sensitivity)")
+    plt.xticks(rotation=20, ha="right")
+    plt.grid(axis="y", linestyle="--", alpha=0.4)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(SCREENSHOTS_DIR / "cnn_comparison_recall.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # ── Chart 5: Combined training loss curves across all experiments ────────
+    plt.figure(figsize=(11, 6))
+    for experiment_name in history_df["experiment"].unique():
+        run_df = history_df[history_df["experiment"] == experiment_name]
+        plt.plot(run_df["epoch"], run_df["train_loss"], marker="o", label=experiment_name)
+    plt.xlabel("Epoch")
+    plt.ylabel("Training Loss")
+    plt.title("Training Loss — All Hyperparameter Configurations", fontweight="bold")
+    plt.legend(loc="upper right", fontsize=9)
+    plt.grid(True, linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(SCREENSHOTS_DIR / "cnn_comparison_training_loss.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # ── Chart 6: Combined validation AUC curves ──────────────────────────────
+    plt.figure(figsize=(11, 6))
+    for experiment_name in history_df["experiment"].unique():
+        run_df = history_df[history_df["experiment"] == experiment_name]
+        plt.plot(run_df["epoch"], run_df["val_auc"], marker="o", label=experiment_name)
+    plt.xlabel("Epoch")
+    plt.ylabel("Validation ROC-AUC")
+    plt.title("Validation ROC-AUC — All Hyperparameter Configurations", fontweight="bold")
+    plt.legend(loc="lower right", fontsize=9)
+    plt.grid(True, linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(SCREENSHOTS_DIR / "cnn_comparison_val_auc.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # ── Chart 7: Precision vs. Recall scatter (trade-off) ───────────
+    plt.figure(figsize=(9, 7))
+    for _, row in results.iterrows():
+        plt.scatter(row["Recall"], row["Precision"], s=160, edgecolor="black", zorder=3)
+        plt.annotate(row["Model"], (row["Recall"], row["Precision"]),
+                     textcoords="offset points", xytext=(8, 6), fontsize=9)
+    plt.xlabel("Recall (Sensitivity)")
+    plt.ylabel("Precision (Positive Predictive Value)")
+    plt.title("Precision vs. Recall Trade-off Across Experiments", fontweight="bold")
+    plt.grid(True, linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(SCREENSHOTS_DIR / "cnn_comparison_precision_recall.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    # ── Chart 8: Heatmap summary of all metrics by experiment ────────────────
+    heatmap_data = results[metrics].values
+    fig, ax = plt.subplots(figsize=(9, 6))
+    im = ax.imshow(heatmap_data, cmap="Blues", aspect="auto", vmin=0.60, vmax=1.0)
+    ax.set_xticks(np.arange(len(metrics)))
+    ax.set_xticklabels(metrics)
+    ax.set_yticks(np.arange(len(results)))
+    ax.set_yticklabels(results["Model"])
+    for i in range(heatmap_data.shape[0]):
+        for j in range(heatmap_data.shape[1]):
+            val = heatmap_data[i, j]
+            color = "white" if val > 0.82 else "black"
+            ax.text(j, i, f"{val:.3f}", ha="center", va="center", color=color, fontsize=9)
+    plt.colorbar(im, ax=ax, label="Metric Score")
+    ax.set_title("Hyperparameter Results Heatmap — All Metrics × All Experiments", fontweight="bold")
+    plt.tight_layout()
+    plt.savefig(SCREENSHOTS_DIR / "cnn_comparison_heatmap.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    print(f"  Comparison plots saved to {SCREENSHOTS_DIR}")
+    print(f"  Comparison CSV saved to {RESULTS_DIR / 'cnn_hyperparameter_comparison.csv'}")
 
     print("\n" + "=" * 55)
     print("  SUPERVISED LEARNING COMPLETE")
     print("=" * 55)
     print(f"  Plots saved   : {SCREENSHOTS_DIR}")
-
 
 if __name__ == "__main__":
     main()

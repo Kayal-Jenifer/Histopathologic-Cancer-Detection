@@ -60,6 +60,11 @@ df_full = pd.read_csv(LABELS_CSV)
 print(f"\n  Full dataset : {len(df_full):,} images")
 print(f"  Label counts :\n{df_full['label'].value_counts().to_string()}")
 
+# Only keep rows whose .tif file is actually present on disk
+available_ids = {p.stem for p in TRAIN_DIR.glob("*.tif")}
+df_full = df_full[df_full["id"].isin(available_ids)]
+print(f"  Available    : {len(df_full):,} images (files present on disk)")
+
 # Sample equal numbers from each class to create a perfectly balanced subset.
 # random_state=SEED ensures the same images are picked on every run.
 neg_sample = df_full[df_full["label"] == 0].sample(SAMPLES_PER_CLASS, random_state=SEED)
@@ -301,4 +306,3 @@ for i, ch in enumerate(channels):
     print(f"    {ch} channel — mean: {all_flat[:,i].mean()/255:.4f}  std: {all_flat[:,i].std()/255:.4f}")
 
 print("=" * 55)
-

@@ -57,10 +57,16 @@ def seed_everything(seed: int) -> None:
     torch.cuda.manual_seed_all(seed)
 
 
+def _load_existing_df() -> pd.DataFrame:
+    df = pd.read_csv(LABELS_CSV)
+    existing = {p.stem for p in TRAIN_DIR.glob("*.tif")}
+    return df[df["id"].isin(existing)].reset_index(drop=True)
+
+
 def sample_balanced_ids() -> list[str]:
     # Use an equal number of cancer / no-cancer patches so the learned features
     # aren't dominated by the majority class distribution.
-    df = pd.read_csv(LABELS_CSV)
+    df = _load_existing_df()
     neg = df[df["label"] == 0].sample(SAMPLES_PER_CLASS, random_state=SEED)
     pos = df[df["label"] == 1].sample(SAMPLES_PER_CLASS, random_state=SEED)
     subset = pd.concat([neg, pos]).sample(frac=1, random_state=SEED).reset_index(drop=True)
@@ -69,7 +75,7 @@ def sample_balanced_ids() -> list[str]:
 
 def sample_balanced_df() -> pd.DataFrame:
     # Same balanced subset as IDs, but keep labels for supervised evaluation.
-    df = pd.read_csv(LABELS_CSV)
+    df = _load_existing_df()
     neg = df[df["label"] == 0].sample(SAMPLES_PER_CLASS, random_state=SEED)
     pos = df[df["label"] == 1].sample(SAMPLES_PER_CLASS, random_state=SEED)
     return pd.concat([neg, pos]).sample(frac=1, random_state=SEED).reset_index(drop=True)
@@ -224,6 +230,7 @@ def save_ae_mse_plot(mse_history: list[float]) -> None:
     plt.grid(True, alpha=0.3)
     plt.tight_layout()
     plt.savefig(SCREENSHOTS_DIR / "unsupervised_ae_mse.png", dpi=150, bbox_inches="tight")
+    plt.show()
     plt.close()
 
 
@@ -318,6 +325,7 @@ def save_transfer_learning_plot(metrics_no_pretrain: tuple[float, float], metric
     plt.legend()
     plt.tight_layout()
     plt.savefig(SCREENSHOTS_DIR / "unsupervised_transfer_learning.png", dpi=150, bbox_inches="tight")
+    plt.show()
     plt.close()
 
 
