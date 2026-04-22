@@ -41,6 +41,7 @@ WEIGHT_DECAY = 1e-5
 NOISE_STD = 0.05
 LATENT_CHANNELS = 256
 
+#standardize image
 TL_IMAGE_SIZE = 224
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
@@ -49,7 +50,7 @@ SUP_TEST_SIZE = 0.20
 
 
 def seed_everything(seed: int) -> None:
-    # Deterministic runs make it easier to explain/compare outcomes in a report.
+    
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
